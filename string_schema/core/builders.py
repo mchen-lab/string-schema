@@ -67,10 +67,10 @@ def _simple_field_to_json_schema(field: SimpleField) -> Dict[str, Any]:
     
     # Regular single type
     prop = {"type": field.field_type}
-    
+
     if field.description:
         prop["description"] = field.description
-    if field.default is not None:
+    if field.has_default:
         prop["default"] = field.default
     
     # Handle enum/choices

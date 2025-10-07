@@ -8,7 +8,7 @@ import re
 from typing import Dict, Any, List, Union, Optional
 import logging
 
-from ..core.fields import SimpleField
+from ..core.fields import SimpleField, _NO_DEFAULT
 from ..core.builders import simple_schema, list_of_objects_schema
 
 logger = logging.getLogger(__name__)
@@ -136,52 +136,110 @@ def _parse_object_fields(fields_str: str) -> Dict[str, Any]:
 
 
 def _parse_single_field_with_nesting(field_str: str) -> tuple:
-    """Parse a single field with enhanced syntax support"""
+    """
+    Parse a single field with enhanced syntax support.
+
+    New syntax support:
+        - Descriptions: field:type | description
+        - Defaults: field:type=default
+        - Combined: field:type(constraints)=default | description
+
+    Examples:
+        "name:string | User name"
+        "age:int=18"
+        "active:bool=true | Whether user is active"
+        "count:int(1,100)=1 | Item count"
+    """
     if not field_str:
         return None, None
-    
-    # Check for optional marker
+
+    # Step 1: Extract description (after |)
+    # Note: Must be done BEFORE checking for union types (which also use |)
+    description = ""
+    # Only split on | if it's not part of a union type definition
+    # Union types are like "string|int|null" (no spaces, part of type definition)
+    # Descriptions are like "type | description" (with space before |)
+    # Look for " |" pattern to distinguish from union types
+    if ' |' in field_str:
+        # This is a description separator, not a union type
+        parts = field_str.split(' |', 1)
+        field_str = parts[0].strip()
+        if len(parts) > 1:
+            description = parts[1].strip()
+
+    # Step 2: Check for optional marker (?)
+    # Must be done BEFORE extracting default to handle "string?=null" correctly
     required = True
-    if field_str.endswith('?'):
-        required = False
-        field_str = field_str[:-1].strip()
-    
-    # Split field name and definition
+    if '?' in field_str:
+        # Check if ? is before = (e.g., "string?=null")
+        if '=' in field_str:
+            # Find position of ? and =
+            q_pos = field_str.find('?')
+            eq_pos = field_str.find('=')
+            if q_pos < eq_pos:
+                # ? comes before =, so it's an optional marker
+                field_str = field_str[:q_pos] + field_str[q_pos+1:]
+                required = False
+        elif field_str.endswith('?'):
+            # Simple optional marker at the end
+            required = False
+            field_str = field_str[:-1].strip()
+
+    # Step 3: Extract default value (after =)
+    # Must be done BEFORE parsing type definition to avoid conflicts with constraints
+    default_value = _NO_DEFAULT  # Use sentinel to distinguish "no default" from "default is None"
+    if '=' in field_str:
+        # Check if = is after the type definition (not in constraints)
+        if ':' in field_str:
+            name_part, type_part = field_str.split(':', 1)
+            # Split type_part on = outside parentheses
+            parts = _split_on_equals_outside_parens(type_part)
+            if len(parts) == 2:
+                field_str = name_part + ':' + parts[0].strip()
+                default_str = parts[1].strip()
+                default_value = _parse_default_value(default_str)
+
+    # Step 4: Split field name and definition
     if ':' in field_str:
         field_name, field_def = field_str.split(':', 1)
         field_name = field_name.strip()
         field_def = field_def.strip()
-        
+
         # Handle nested structures
         if field_def.startswith('[') or field_def.startswith('{'):
             nested_structure = _parse_schema_structure(field_def)
             nested_structure['required'] = required
             return field_name, nested_structure
-        
+
         # Handle union types: string|int|null
+        # Union types have | without spaces around them
         elif '|' in field_def:
             union_types = [t.strip() for t in field_def.split('|')]
             field_type = _normalize_type_name(union_types[0])  # Use first type as primary
-            
+
             # Create field with union support
             field_obj = SimpleField(
                 field_type=field_type,
+                description=description,
+                default=default_value,
                 required=required
             )
             # Store union info for JSON schema generation
             field_obj.union_types = [_normalize_type_name(t) for t in union_types]
             return field_name, field_obj
-        
+
         # Handle enum types: enum(value1,value2,value3) or choice(...)
         elif field_def.startswith(('enum(', 'choice(', 'select(')):
             enum_values = _parse_enum_values(field_def)
             field_obj = SimpleField(
                 field_type="string",  # Enums are string-based
+                description=description,
+                default=default_value,
                 required=required,
                 choices=enum_values
             )
             return field_name, field_obj
-        
+
         # Handle array types: array(string,max=5) or list(int,min=1)
         elif field_def.startswith(('array(', 'list(')):
             array_type, constraints = _parse_array_type_definition(field_def)
@@ -195,7 +253,7 @@ def _parse_single_field_with_nesting(field_str: str) -> tuple:
                 "constraints": constraints,
                 "required": required
             }
-        
+
         # Handle regular type with constraints
         else:
             original_type = field_def.split('(')[0].strip()  # Get type before any constraints
@@ -208,16 +266,20 @@ def _parse_single_field_with_nesting(field_str: str) -> tuple:
 
             field_obj = SimpleField(
                 field_type=field_type,
+                description=description,
+                default=default_value,
                 required=required,
                 **constraints
             )
             return field_name, field_obj
-    
+
     # Field name only (default to string)
     else:
         field_name = field_str.strip()
         field_obj = SimpleField(
             field_type="string",
+            description=description,
+            default=default_value,
             required=required
         )
         return field_name, field_obj
@@ -229,10 +291,73 @@ def _parse_enum_values(enum_def: str) -> List[str]:
     match = re.match(r'^(?:enum|choice|select)\(([^)]+)\)$', enum_def)
     if not match:
         return []
-    
+
     values_str = match.group(1)
     values = [v.strip() for v in values_str.split(',')]
     return values
+
+
+def _split_on_equals_outside_parens(s: str) -> List[str]:
+    """
+    Split string on FIRST = outside parentheses only.
+
+    Example:
+        "int(1,100)=5" -> ["int(1,100)", "5"]
+        "string=hello" -> ["string", "hello"]
+        "string=a=b" -> ["string", "a=b"]  # Only split on first =
+    """
+    depth = 0
+
+    for i, char in enumerate(s):
+        if char == '(':
+            depth += 1
+        elif char == ')':
+            depth -= 1
+        elif char == '=' and depth == 0:
+            # Found first = outside parentheses - split here
+            return [s[:i], s[i+1:]]
+
+    # No = found outside parentheses
+    return [s]
+
+
+def _parse_default_value(default_str: str) -> Any:
+    """
+    Parse default value from string.
+
+    Supports:
+        - Booleans: true, false
+        - Null: null, none
+        - Numbers: 123, 45.67
+        - Strings: "hello", 'world', or unquoted
+    """
+    default_str = default_str.strip()
+
+    # Boolean
+    if default_str.lower() in ['true', 'false']:
+        return default_str.lower() == 'true'
+
+    # Null/None
+    if default_str.lower() in ['null', 'none']:
+        return None
+
+    # Number
+    try:
+        if '.' in default_str:
+            return float(default_str)
+        else:
+            return int(default_str)
+    except ValueError:
+        pass
+
+    # String (remove quotes if present)
+    if default_str.startswith('"') and default_str.endswith('"'):
+        return default_str[1:-1]
+    if default_str.startswith("'") and default_str.endswith("'"):
+        return default_str[1:-1]
+
+    # Return as-is (string)
+    return default_str
 
 
 def _parse_array_type_definition(array_def: str) -> tuple:
@@ -363,7 +488,7 @@ def _simple_field_to_json_schema(field: SimpleField) -> Dict[str, Any]:
     # Basic metadata
     if field.description:
         prop["description"] = field.description
-    if field.default is not None:
+    if field.has_default:
         prop["default"] = field.default
 
     # Handle union types

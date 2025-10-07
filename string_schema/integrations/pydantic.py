@@ -90,7 +90,7 @@ def _simple_field_to_pydantic(field: SimpleField) -> tuple:
     if field.description:
         field_kwargs['description'] = field.description
 
-    if field.default is not None:
+    if field.has_default:
         field_kwargs['default'] = field.default
     elif not field.required:
         field_kwargs['default'] = None

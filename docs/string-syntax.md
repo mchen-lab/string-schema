@@ -40,6 +40,56 @@ price:number(min=0)
 description:text(max=500)
 ```
 
+### Default Values
+
+Add default values using `=`:
+
+```
+active:bool=true
+count:int=0
+status:string=pending
+price:number=9.99
+```
+
+Default values can be combined with constraints:
+
+```
+age:int(0,120)=18
+limit:int(1,1000)=100
+```
+
+### Field Descriptions
+
+Add human-readable descriptions using ` |` (space before pipe):
+
+```
+name:string | User's full name
+age:int | User's age in years
+email:email | Contact email address
+```
+
+### Combined Syntax
+
+You can combine all features:
+
+```
+name:string(min=1,max=100) | User's full name
+age:int(0,120)=18 | User's age in years
+active:bool=true | Whether the account is active
+email:string? | Optional email address
+count:int(1,1000)=1 | Number of items to process
+```
+
+**Syntax Order:**
+
+```
+field_name:type(constraints)?=default | description
+```
+
+- `?` = optional marker (before `=`)
+- `=value` = default value
+- ` | text` = description (space before pipe)
+
 ## Type System
 
 ### Basic Types

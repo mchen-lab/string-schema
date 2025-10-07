@@ -10,23 +10,27 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Sentinel value to distinguish "no default" from "default is None"
+_NO_DEFAULT = object()
+
+
 class SimpleField:
     """Enhanced SimpleField with support for all new features"""
-    
+
     def __init__(self, field_type: str, description: str = "", required: bool = True,
-                 default: Any = None, min_val: Optional[Union[int, float]] = None,
+                 default: Any = _NO_DEFAULT, min_val: Optional[Union[int, float]] = None,
                  max_val: Optional[Union[int, float]] = None, min_length: Optional[int] = None,
                  max_length: Optional[int] = None, choices: Optional[List[Any]] = None,
                  min_items: Optional[int] = None, max_items: Optional[int] = None,
                  format_hint: Optional[str] = None, union_types: Optional[List[str]] = None):
         """
         Initialize a SimpleField with comprehensive validation options.
-        
+
         Args:
             field_type: The base type (string, integer, number, boolean)
             description: Human-readable description of the field
             required: Whether the field is required (default: True)
-            default: Default value if field is not provided
+            default: Default value if field is not provided (use _NO_DEFAULT sentinel for no default)
             min_val: Minimum value for numeric types
             max_val: Maximum value for numeric types
             min_length: Minimum length for string types
@@ -41,6 +45,7 @@ class SimpleField:
         self.description = description
         self.required = required
         self.default = default
+        self.has_default = default is not _NO_DEFAULT
         self.min_val = min_val
         self.max_val = max_val
         self.min_length = min_length
@@ -70,10 +75,10 @@ class SimpleField:
             'type': self.field_type,
             'required': self.required
         }
-        
+
         if self.description:
             result['description'] = self.description
-        if self.default is not None:
+        if self.has_default:
             result['default'] = self.default
         if self.min_val is not None:
             result['min_val'] = self.min_val
@@ -93,7 +98,7 @@ class SimpleField:
             result['format_hint'] = self.format_hint
         if self.union_types:
             result['union_types'] = self.union_types
-            
+
         return result
     
     @classmethod
