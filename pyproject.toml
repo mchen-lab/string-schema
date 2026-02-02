@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "string-schema"
-version = "0.1.6"
+version = "0.1.7"
 description = "A simple, LLM-friendly schema definition library for converting string syntax to structured schemas"
 readme = "README.md"
 license = "MIT"

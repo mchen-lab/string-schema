@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="string-schema",
-    version="0.1.6",
+    version="0.1.7",
     author="Michael Chen",
     author_email="xychen@msn.com",
     description="A simple, LLM-friendly schema definition library for converting string syntax to structured schemas",

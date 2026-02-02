@@ -64,7 +64,7 @@ from .integrations.json_schema import (
 # Note: Built-in presets moved to examples/ directory
 # Import them from simple_schema.examples.presets if needed
 
-__version__ = "0.1.0"
+__version__ = "0.1.7"
 __author__ = "importal"
 
 __all__ = [

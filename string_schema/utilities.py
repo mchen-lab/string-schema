@@ -457,7 +457,7 @@ def get_model_info(model_class) -> Dict[str, Any]:
     Returns:
         Dictionary with model information including fields, types, and constraints
     """
-    if not HAS_PYDANTIC or not issubclass(model_class, BaseModel):
+    if not HAS_PYDANTIC or not isinstance(model_class, type) or not issubclass(model_class, BaseModel):
         raise ValueError("Input must be a Pydantic model class")
 
     info = {
